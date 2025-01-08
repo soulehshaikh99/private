@@ -1,5 +1,7 @@
 RewriteEngine on
 
+RewriteRule ^contact$ /contact-us [L,R=301]
+
 RewriteRule ^age-calculator$ /tools/age-calculator [L,R=301]
 RewriteRule ^bmi-calculator$ /tools/bmi-calculator [L,R=301]
 RewriteRule ^csv-to-json$ /tools/csv-to-json [L,R=301]
