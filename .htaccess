@@ -1,26 +1,16 @@
 RewriteEngine on
 
-RewriteRule ^contact$ /contact-us [L,R=301]
-
-RewriteRule ^age-calculator$ /tools/age-calculator [L,R=301]
-RewriteRule ^bmi-calculator$ /tools/bmi-calculator [L,R=301]
-RewriteRule ^csv-to-json$ /tools/csv-to-json [L,R=301]
-RewriteRule ^json-to-csv$ /tools/json-to-csv [L,R=301]
-RewriteRule ^percentage-calculator$ /tools/percentage-calculator [L,R=301]
-RewriteRule ^stock-average-calculator$ /tools/stock-average-calculator [L,R=301]
-
 RewriteCond %{THE_REQUEST} /([^.]+)\.html [NC]
 RewriteRule ^ /%1 [NC,L,R]
 
 RewriteCond %{REQUEST_FILENAME}.html -f
 RewriteRule ^ %{REQUEST_URI}.html [NC,L]
 
-ErrorDocument 404 /404.html
+# Block directory listing
+Options -Indexes
 
-# RewriteEngine on
-# RewriteCond %{REQUEST_FILENAME} !-f
-# RewriteCond %{REQUEST_FILENAME} !-d
-# RewriteCond %{REQUEST_FILENAME}.html -f
-# RewriteRule ^(.+)$ $1.html [L,QSA]
-# RewriteCond %{THE_REQUEST} ^[A-Z]{3,9} /.*.html HTTP/
-# RewriteRule ^(.*).html$ /$1 [R=301,L]
+# Custom 404 Error Page
+ErrorDocument 403 /403.html
+
+# Custom 404 Error Page
+ErrorDocument 404 /404.html
