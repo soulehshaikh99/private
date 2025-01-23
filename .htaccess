@@ -24,3 +24,6 @@ ErrorDocument 403 /403.html
 
 # Custom 404 Error Page
 ErrorDocument 404 /404.html
+
+# Custom 500 Error Page
+ErrorDocument 500 /500.html
