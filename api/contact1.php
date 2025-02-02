@@ -90,4 +90,5 @@ echo json_encode([
     'message' => 'Message received and decrypted successfully.',
     'data' => $payload
 ]);
+exit;
 ?>
