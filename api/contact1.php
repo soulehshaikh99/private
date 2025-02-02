@@ -1,6 +1,11 @@
 <?php
 // contact1.php
 
+// Enable error logging for debugging
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // Set the response header to JSON
 header('Content-Type: application/json');
 
@@ -29,52 +34,52 @@ if (json_last_error() !== JSON_ERROR_NONE) {
     exit;
 }
 
-// Check if the 'data' key exists in the request
-if (!isset($requestData['data'])) {
+// Check if required fields exist in the request
+if (!isset($requestData['encryptedPayload']) || !isset($requestData['encryptedKey']) || !isset($requestData['encryptedIv'])) {
     http_response_code(400); // Bad Request
     echo json_encode([
         'status' => 'error',
-        'message' => 'Missing "data" in request.'
+        'message' => 'Missing required fields in request.'
     ]);
     exit;
 }
 
-// Get the encrypted data from the request
-$encryptedBase64 = $requestData['data'];
+// Decrypt the AES key and IV using RSA
+$decryptedKey = '';
+$decryptedIv = '';
+$successKey = openssl_private_decrypt(base64_decode($requestData['encryptedKey']), $decryptedKey, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
+$successIv = openssl_private_decrypt(base64_decode($requestData['encryptedIv']), $decryptedIv, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
 
-// Decode the base64 encrypted data
-$encrypted = base64_decode($encryptedBase64);
-
-if ($encrypted === false) {
+if (!$successKey || !$successIv) {
     http_response_code(400); // Bad Request
     echo json_encode([
         'status' => 'error',
-        'message' => 'Invalid base64 data.'
+        'message' => 'Failed to decrypt AES key or IV.'
     ]);
     exit;
 }
 
-// Decrypt the data
-$decrypted = '';
-$success = openssl_private_decrypt($encrypted, $decrypted, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
+// Decrypt the payload using AES
+$encryptedPayload = hex2bin($requestData['encryptedPayload']);
+$decryptedPayload = openssl_decrypt($encryptedPayload, 'AES-256-CBC', $decryptedKey, OPENSSL_RAW_DATA, $decryptedIv);
 
-if (!$success) {
+if ($decryptedPayload === false) {
     http_response_code(400); // Bad Request
     echo json_encode([
         'status' => 'error',
-        'message' => 'Decryption failed.'
+        'message' => 'Failed to decrypt payload.'
     ]);
     exit;
 }
 
-// Process the decrypted data
-$payload = json_decode($decrypted, true);
+// Process the decrypted payload
+$payload = json_decode($decryptedPayload, true);
 
 if (json_last_error() !== JSON_ERROR_NONE) {
     http_response_code(400); // Bad Request
     echo json_encode([
         'status' => 'error',
-        'message' => 'Invalid JSON in decrypted data.'
+        'message' => 'Invalid JSON in decrypted payload.'
     ]);
     exit;
 }
@@ -85,7 +90,4 @@ echo json_encode([
     'message' => 'Message received and decrypted successfully.',
     'data' => $payload
 ]);
-
-// Free the key from memory
-openssl_free_key($privateKey);
 ?>
