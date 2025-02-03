@@ -1,126 +1,182 @@
 <?php
 require '../vendor/autoload.php';
 
-// Create a Slim app instance
-$app = new \Slim\App();
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use Dotenv\Dotenv;
+use Slim\App;
 
-// Define a route to get the public key
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../');
+$dotenv->load();
+
+$app = new App();
+
+// Health check route
+$app->get('/health', function ($request, $response, $args) {
+    return $response->withJson([
+        'success' => true, 
+        'message' => date('jS F Y h:i:sA')
+    ]);
+});
+
+// Fetch public key
 $app->get('/getPublicKey', function ($request, $response, $args) {
-    // Path to the public key file (PEM format)
-    $publicKeyPath = './../data/public_key_2048.pem';
+    $publicKeyPath = __DIR__ . '/../data/public_key_2048.pem';
 
-    // Check if the public key file exists
     if (!file_exists($publicKeyPath)) {
+        error_log("ERROR: Public key file not found at $publicKeyPath");
         return $response->withStatus(500)->withJson([
             'success' => false,
             'message' => 'Public key not found.'
         ]);
     }
 
-    // Read the public key from the file
     $publicKey = file_get_contents($publicKeyPath);
-
     if (!$publicKey) {
+        error_log("ERROR: Failed to read public key at $publicKeyPath");
         return $response->withStatus(500)->withJson([
             'success' => false,
             'message' => 'Failed to read public key.'
         ]);
     }
 
-    // Return the public key in JSON format
     return $response->withJson([
         'success' => true,
         'publicKey' => $publicKey
     ]);
 });
 
-// Define a route to handle contact form submission and decryption
+// Contact form
 $app->post('/contact', function ($request, $response, $args) {
-    // Enable error logging for debugging
-    ini_set('display_errors', 1);
-    ini_set('display_startup_errors', 1);
-    error_reporting(E_ALL);
+    $privateKeyPath = __DIR__ . '/../data/private_key_2048.pem';
 
-    // Load the private key
-    $privateKeyPem = file_get_contents('./../data/private_key_2048.pem');
+    if (!file_exists($privateKeyPath)) {
+        error_log("ERROR: Private key file not found at $privateKeyPath");
+        return $response->withStatus(500)->withJson([
+            'status' => 'error',
+            'message' => 'Private key not found.'
+        ]);
+    }
+
+    $privateKeyPem = file_get_contents($privateKeyPath);
     $privateKey = openssl_pkey_get_private($privateKeyPem);
 
     if (!$privateKey) {
+        error_log("ERROR: Failed to load private key from $privateKeyPath");
         return $response->withStatus(500)->withJson([
             'status' => 'error',
             'message' => 'Failed to load private key.'
         ]);
     }
 
-    // Read the raw JSON data from the request body
     $requestData = $request->getParsedBody();
-
     if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("ERROR: Invalid JSON data received - " . json_last_error_msg());
         return $response->withStatus(400)->withJson([
             'status' => 'error',
             'message' => 'Invalid JSON data.'
         ]);
     }
 
-    // Check if required fields exist in the request
-    if (!isset($requestData['encryptedPayload']) || !isset($requestData['encryptedKey']) || !isset($requestData['encryptedIv'])) {
+    if (!isset($requestData['data'])) {
+        error_log("Missing 'data' field in request.");
         return $response->withStatus(400)->withJson([
             'status' => 'error',
-            'message' => 'Missing required fields in request.'
+            'message' => "Missing 'data' field."
         ]);
     }
 
-    // Decrypt the AES key and IV using RSA
+    $parts = explode('.', $requestData['data']);
+
+    if (count($parts) !== 3) {
+        error_log("Invalid data format, expected 3 parts but received " . count($parts));
+        return $response->withStatus(400)->withJson([
+            'status' => 'error',
+            'message' => 'Invalid encrypted data format.'
+        ]);
+    }
+
+    $encryptedPayload = $parts[0];
+    $encryptedKey = $parts[1];
+    $encryptedIv = $parts[2];
+
     $decryptedKey = '';
     $decryptedIv = '';
-    $successKey = openssl_private_decrypt(base64_decode($requestData['encryptedKey']), $decryptedKey, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
-    $successIv = openssl_private_decrypt(base64_decode($requestData['encryptedIv']), $decryptedIv, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
+    $successKey = openssl_private_decrypt(base64_decode($encryptedKey), $decryptedKey, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
+    $successIv = openssl_private_decrypt(base64_decode($encryptedIv), $decryptedIv, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
 
     if (!$successKey || !$successIv) {
+        error_log("ERROR: Failed to decrypt AES key or IV.");
         return $response->withStatus(400)->withJson([
             'status' => 'error',
             'message' => 'Failed to decrypt AES key or IV.'
         ]);
     }
 
-    // Decrypt the payload using AES
-    $encryptedPayload = hex2bin($requestData['encryptedPayload']);
+    $encryptedPayload = hex2bin($encryptedPayload);
     $decryptedPayload = openssl_decrypt($encryptedPayload, 'AES-256-CBC', $decryptedKey, OPENSSL_RAW_DATA, $decryptedIv);
 
     if ($decryptedPayload === false) {
+        error_log("ERROR: Failed to decrypt payload.");
         return $response->withStatus(400)->withJson([
             'status' => 'error',
             'message' => 'Failed to decrypt payload.'
         ]);
     }
 
-    // Process the decrypted payload
     $payload = json_decode($decryptedPayload, true);
-
     if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("ERROR: Invalid JSON in decrypted payload - " . json_last_error_msg());
         return $response->withStatus(400)->withJson([
             'status' => 'error',
             'message' => 'Invalid JSON in decrypted payload.'
         ]);
     }
 
-    // Return a success response
-    return $response->withJson([
-        'status' => 'success',
-        'message' => 'Message received and decrypted successfully.',
-        'data' => $payload
-    ]);
+    $email = filter_var($payload['email'], FILTER_SANITIZE_EMAIL);
+    $subject = htmlspecialchars($payload['subject']);
+    $message = htmlspecialchars($payload['message']);
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        error_log("ERROR: Invalid email address provided: $email");
+        return $response->withStatus(400)->withJson([
+            'status' => 'error',
+            'message' => 'Invalid email address.'
+        ]);
+    }
+
+    $mail = new PHPMailer(true);
+
+    try {
+        $mail->isSMTP();
+        $mail->Host = $_ENV['SMTP_HOST'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $_ENV['SMTP_USERNAME'];
+        $mail->Password = $_ENV['SMTP_PASSWORD'];
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port = 587;
+
+        $mail->setFrom($_ENV['SMTP_USERNAME'], $_ENV['WEBSITE_NAME']);
+        $mail->addAddress($_ENV['SMTP_USERNAME']);
+        $mail->addReplyTo($email);
+
+        $mail->Subject = $subject;
+        $mail->isHTML(false);
+        $mail->Body = $message;
+
+        $mail->send();
+
+        return $response->withJson([
+            'status' => 'success',
+            'message' => 'Message email sent successfully.',
+        ]);
+    } catch (Exception $e) {
+        error_log("ERROR: Mailer failed - " . $mail->ErrorInfo);
+        return $response->withStatus(500)->withJson([
+            'status' => 'error',
+            'message' => 'Message could not be sent. Mailer Error: ' . $mail->ErrorInfo
+        ]);
+    }
 });
 
-// // Define a route for the home page
-// $app->get('/', function ($request, $response, $args) {
-//     return $response->write("Hello, Slim 3!");
-// });
-
-// // Define a route with a parameter
-// $app->get('/hello/{name}', function ($request, $response, $args) {
-//     return $response->write("Hello, " . $args['name'] . "!");
-// });
-
-// Run the Slim app
 $app->run();
