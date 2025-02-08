@@ -10,6 +10,10 @@ RewriteEngine on
     Require all denied
 </FilesMatch>
 
+# Redirect /tools, /tools/, /tools/index, /tools/index.html to homepage (Temporary Redirect)
+RewriteCond %{REQUEST_URI} ^/tools(/|/index(\.html)?)?$ [NC]
+RewriteRule ^ / [R=302,L]
+
 RewriteCond %{THE_REQUEST} /([^.]+)\.html [NC]
 RewriteRule ^ /%1 [NC,L,R]
 
