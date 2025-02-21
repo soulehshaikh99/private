@@ -1,4 +1,7 @@
+# User-agent: *
+# Disallow: /api/
+# Disallow: /data/
+# Allow: /
+
 User-agent: *
-Disallow: /api/
-Disallow: /data/
-Allow: /
+Disallow: /
