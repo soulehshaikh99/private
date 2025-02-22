@@ -1,5 +1,9 @@
 RewriteEngine on
 
+# Redirect non-www to www
+RewriteCond %{HTTP_HOST} ^example.com [NC]
+RewriteRule ^(.*)$ http://www.example.com/$1 [L,R=301]
+
 # Prevent access to hidden files (starting with a dot)
 <FilesMatch "^\.">
     Require all denied
@@ -23,7 +27,7 @@ RewriteRule ^ %{REQUEST_URI}.html [NC,L]
 # Block directory listing
 Options -Indexes
 
-# Custom 404 Error Page
+# Custom 403 Error Page
 ErrorDocument 403 /403.html
 
 # Custom 404 Error Page

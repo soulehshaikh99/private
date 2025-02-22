@@ -48,7 +48,7 @@ $app->get('/getPublicKey', function ($request, $response, $args) {
 
 // Contact form
 $app->post('/contact', function ($request, $response, $args) {
-    $privateKeyPath = __DIR__ . '/../data/private_key_2048.pem';
+    $privateKeyPath = __DIR__ . '/../admin/data/private_key_2048.pem';
 
     if (!file_exists($privateKeyPath)) {
         error_log("ERROR: Private key file not found at $privateKeyPath");
